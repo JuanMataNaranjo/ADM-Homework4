@@ -1,9 +1,5 @@
-import dask.dataframe as ddf
 import pandas as pd
 import numpy as np
-from dask.distributed import Client
-
-client = Client()
 
 
 def string_to_binary_hash(string, p=17, prime_value=(2**64)-1):
@@ -42,7 +38,7 @@ def decimal_to_binary(integer, decimals=None):
     return binary if binary else '0'
 
 
-def string_to_binary_df(df, column='User_ID'):
+def string_to_binary_df(df, column='Binary'):
     """
     Function to convert dataframe strings into binary using the first hash function
 
@@ -52,30 +48,29 @@ def string_to_binary_df(df, column='User_ID'):
     be computed
     """
 
-    df[column] = df.User_ID.apply(lambda x: string_to_binary_hash(x))
+    df[column] = df[column].apply(lambda x: string_to_binary_hash(x))
 
     return df
 
 
-def split_binary(df, m=64, column='Binary', max_zeros_per_bucket={}):
+def split_binary(list_, m=64, max_zeros_per_bucket={}):
     """
     This function will take a df with binary values (binary values are the hashed user ids)
     and splits them into a set of buckets (m). For each of these buckets the function will also compute
     the maximum number of zero's at the end of each binary number. The function will then return a
     list which will then be used to estimate the distinct count value
 
-    :param df: Dataframe with a column of binary values
+    :param list_: List with a column of binary values
     :param m: Number of buckets (log2(m) will be the length of the binary to classify binary values into each group
     accordingly)
-    :param column: Column of df in which we can find the binary values
     :param max_zeros_per_bucket: Dictionary with m groups and their max number of zero's at the end of the binary.
     :return: Update the max_zeros_per_bucket dictionary with new max values
     """
     len_buckets = int(np.log2(m))
 
-    for index, user_id in df[[column]].iterrows():
-        group = user_id[0][:len_buckets]
-        num_final_zeros = len(user_id[0]) - len(user_id[0].rstrip('0')) + 1
+    for user_id in list_:
+        group = user_id[:len_buckets]
+        num_final_zeros = len(user_id) - len(user_id.rstrip('0')) + 1
         max_zeros_per_bucket[group] = max(max_zeros_per_bucket[group], num_final_zeros)
 
     return max_zeros_per_bucket
@@ -131,7 +126,7 @@ def hyperloglog_estimate(max_zeros):
     return estimate, error
 
 
-def hyperloglog(path_df='data/hash.txt', num_substreams=4096, chunksize=1000000):
+def hyperloglog(path_df='data/binary.txt', num_substreams=4096, chunksize=1000000):
     """
     This function takes as input a txt file and estimates the length of unique values using the hyperloglog using a given
     number of sub-streams (number of sub-streams over which the harmonic mean will be computed).
@@ -152,19 +147,9 @@ def hyperloglog(path_df='data/hash.txt', num_substreams=4096, chunksize=1000000)
     #
     max_zeros_per_bucket = get_bucket_groups(num_substreams)
 
-    count = 0
-    for users_df in pd.read_csv(path_df, sep=" ", header=None, chunksize=chunksize):
-        print(count)
-        print('============')
-        count += 1
-        users_df.columns = ["User_ID"]
+    for users_df_binary in pd.read_csv(path_df, sep=" ", header=0, chunksize=chunksize, index_col=0):
 
-        dask_dataframe = ddf.from_pandas(users_df, npartitions=20)
-        users_df_binary = dask_dataframe.map_partitions(string_to_binary_df, meta=users_df).compute()
-
-        max_zeros_per_bucket = split_binary(users_df_binary, m=num_substreams,
-                                            column='User_ID', max_zeros_per_bucket=max_zeros_per_bucket)
-
-    print('LOOP HAS FINISHED. WE WILL NOW COMPUTE THE ESTIMATED DISTINCT COUNT VALUE')
+        max_zeros_per_bucket = split_binary(users_df_binary['Binary'].tolist(), m=num_substreams,
+                                            max_zeros_per_bucket=max_zeros_per_bucket)
 
     return hyperloglog_estimate(list(max_zeros_per_bucket.values()))
