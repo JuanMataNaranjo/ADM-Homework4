@@ -130,3 +130,6 @@ dmypy.json
 
 # Don't upload data
 /data
+
+.idea
+/dask-worker-space
