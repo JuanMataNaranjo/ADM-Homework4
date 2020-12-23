@@ -144,7 +144,6 @@ def hyperloglog(path_df='data/binary.txt', num_substreams=4096, chunksize=100000
     :return: Cardinality and Error estimate
     """
 
-    #
     max_zeros_per_bucket = get_bucket_groups(num_substreams)
 
     for users_df_binary in pd.read_csv(path_df, sep=" ", header=0, chunksize=chunksize, index_col=0):
