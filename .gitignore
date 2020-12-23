@@ -129,6 +129,7 @@ dmypy.json
 .pyre/
 
 # Don't upload data
+/data_archive
 /data
 
 .idea
